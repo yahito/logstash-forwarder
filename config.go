@@ -163,7 +163,7 @@ func LoadConfig(path string) (config Config, err error) {
 		for scanner.Scan() {
 			parsed := strings.Split(scanner.Text(), "=")
 
-			alias := stringInSlice(parsed[0], config.PropertyFiles[k].Keys)
+			alias := findAlias(parsed[0], config.PropertyFiles[k].Keys)
 
 			if alias != "" {
 				fmt.Println(parsed[0])
@@ -193,7 +193,7 @@ func LoadConfig(path string) (config Config, err error) {
 	return
 }
 
-func stringInSlice(a string, list []KeyWithAlias) string {
+func findAlias(a string, list []KeyWithAlias) string {
 	for _, b := range list {
 		if b.Key == a {
 			return b.Alias
