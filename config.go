@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -22,8 +24,9 @@ var defaultConfig = &struct {
 }
 
 type Config struct {
-	Network NetworkConfig `json:network`
-	Files   []FileConfig  `json:files`
+	Network       NetworkConfig  `json:network`
+	Files         []FileConfig   `json:files`
+	PropertyFiles []PropertyFile `json:propertyfiles`
 }
 
 type NetworkConfig struct {
@@ -33,6 +36,16 @@ type NetworkConfig struct {
 	SSLCA          string   `json:"ssl ca"`
 	Timeout        int64    `json:timeout`
 	timeout        time.Duration
+}
+
+type PropertyFile struct {
+	Path string         `json:path`
+	Keys []KeyWithAlias `json:keys`
+}
+
+type KeyWithAlias struct {
+	Key   string `json:key`
+	Alias string `json:alias`
 }
 
 type FileConfig struct {
@@ -131,6 +144,34 @@ func LoadConfig(path string) (config Config, err error) {
 		return
 	}
 
+	properties := make(map[string]string)
+
+	for k, _ := range config.PropertyFiles {
+		fi, err := os.Open(config.PropertyFiles[k].Path)
+
+		if err != nil {
+			panic(err)
+		}
+
+		defer func() {
+			if err := fi.Close(); err != nil {
+				panic(err)
+			}
+		}()
+
+		scanner := bufio.NewScanner(fi)
+		for scanner.Scan() {
+			parsed := strings.Split(scanner.Text(), "=")
+
+			alias := stringInSlice(parsed[0], config.PropertyFiles[k].Keys)
+
+			if alias != "" {
+				fmt.Println(parsed[0])
+				properties[alias] = parsed[1]
+			}
+		}
+	}
+
 	for k, _ := range config.Files {
 		if config.Files[k].DeadTime == "" {
 			config.Files[k].DeadTime = defaultConfig.fileDeadtime
@@ -140,9 +181,25 @@ func LoadConfig(path string) (config Config, err error) {
 			emit("Failed to parse dead time duration '%s'. Error was: %s\n", config.Files[k].DeadTime, err)
 			return
 		}
+
+		for key, value := range properties {
+			if config.Files[k].Fields == nil {
+				config.Files[k].Fields = make(map[string]string)
+			}
+			config.Files[k].Fields[key] = value
+		}
 	}
 
 	return
+}
+
+func stringInSlice(a string, list []KeyWithAlias) string {
+	for _, b := range list {
+		if b.Key == a {
+			return b.Alias
+		}
+	}
+	return ""
 }
 
 func FinalizeConfig(config *Config) {
